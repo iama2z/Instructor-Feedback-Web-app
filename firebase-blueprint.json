@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student feedback data",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "period": { "type": "string" },
+        "feedback": { "type": "string" },
+        "role": { "type": "string" },
+        "hasViewed": { "type": "boolean" },
+        "lastViewedAt": { "type": "string" }
+      },
+      "required": ["name", "period", "feedback"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Administrator details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["email"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Stores individual student feedback. ID is an alphanumeric code like ABC012345."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Stores admin users who can view all feedback."
+    }
+  }
+}

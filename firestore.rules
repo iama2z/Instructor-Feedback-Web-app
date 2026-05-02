@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { 
+      return request.auth != null && request.auth.token.email_verified == true; 
+    }
+
+    function isInstructorEmail() {
+      // Allow access if the user's verified email matches the instructor.
+      return isSignedIn() && request.auth.token.email == 'andrewmj.hogan@gmail.com';
+    }
+
+    function isAdmin() { 
+      return isInstructorEmail() || (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))); 
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() > 0 && id.size() <= 20 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'period', 'feedback']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.period is string && data.period.size() > 0 && data.period.size() <= 50 &&
+             data.feedback is string && data.feedback.size() <= 10000 &&
+             ( !('role' in data) || (data.role is string && data.role.size() <= 20) ) &&
+             ( !('hasViewed' in data) || data.hasViewed is bool ) &&
+             ( !('lastViewedAt' in data) || (data.lastViewedAt is string && data.lastViewedAt.size() <= 30) );
+    }
+
+    match /admins/{userId} {
+      allow read: if isAdmin();
+      allow write: if false; 
+    }
+
+    match /students/{studentId} {
+      allow get: if isValidId(studentId);
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidStudent(incoming());
+      
+      allow update: if (
+        (isAdmin() && isValidStudent(incoming())) ||
+        (
+          isValidId(studentId) && 
+          incoming().diff(existing()).affectedKeys().hasOnly(['hasViewed', 'lastViewedAt']) &&
+          incoming().hasViewed is bool &&
+          incoming().lastViewedAt is string && incoming().lastViewedAt.size() <= 30
+        )
+      );
+      
+      allow delete: if isAdmin();
+    }
+  }
+}
