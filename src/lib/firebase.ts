@@ -39,6 +39,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+  // Log the structured error for diagnostics. Do not re-throw here because all
+  // call sites are already inside catch blocks that have handled the error at
+  // the UI level; re-throwing would produce unhandled promise rejections.
   console.error('Firestore Error: ', JSON.stringify(errInfo));
 }
 

@@ -43,7 +43,7 @@ export function BulkImportModal({ isOpen, onClose, onImport, existingStudents }:
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        setError('AI parsing is unavailable: GEMINI_API_KEY is not configured.');
+        setError('AI parsing is currently unavailable. Please contact your administrator.');
         return;
       }
       const ai = new GoogleGenAI({ apiKey });
