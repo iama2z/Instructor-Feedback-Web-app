@@ -3,8 +3,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Bot, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
 export interface ParsedFeedback {
   studentNameOrId: string;
   feedback: string;
@@ -43,6 +41,13 @@ export function BulkImportModal({ isOpen, onClose, onImport, existingStudents }:
     setParsedResults(null);
 
     try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        setError('AI parsing is unavailable: GEMINI_API_KEY is not configured.');
+        return;
+      }
+      const ai = new GoogleGenAI({ apiKey });
+
       // Create a simplified list of students for the AI to match against (name and ID)
       const studentDirectory = existingStudents.map(s => ({ id: s.id, name: s.name }));
 
