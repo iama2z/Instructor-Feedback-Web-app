@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Bot, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { X, Upload, Check, AlertCircle } from 'lucide-react';
 
 export interface ParsedFeedback {
   studentNameOrId: string;
@@ -17,94 +16,82 @@ interface BulkImportModalProps {
   existingStudents: any[];
 }
 
+/**
+ * Parses pasted feedback text.
+ * Expected format — one entry per line:
+ *   <StudentID or Full Name>: <feedback text>
+ *
+ * Matching priority:
+ *   1. Exact student ID (case-insensitive)
+ *   2. Exact full name (case-insensitive)
+ *   3. Partial name (identifier is contained in the student name)
+ */
+function parseFeedbackText(text: string, students: any[]): ParsedFeedback[] {
+  const results: ParsedFeedback[] = [];
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const identifier = trimmed.slice(0, colonIdx).trim();
+    const feedback = trimmed.slice(colonIdx + 1).trim();
+    if (!identifier || !feedback) continue;
+
+    const identifierUpper = identifier.toUpperCase();
+    const identifierLower = identifier.toLowerCase();
+
+    // 1. Exact ID match
+    let matched = students.find((s) => s.id.toUpperCase() === identifierUpper);
+    // 2. Exact name match (case-insensitive)
+    if (!matched) {
+      matched = students.find((s) => s.name.toLowerCase() === identifierLower);
+    }
+    // 3. Partial name match (identifier appears anywhere in the student's full name)
+    if (!matched) {
+      matched = students.find((s) => s.name.toLowerCase().includes(identifierLower));
+    }
+
+    results.push({
+      studentNameOrId: identifier,
+      feedback,
+      matchedId: matched?.id,
+      matchedName: matched?.name,
+    });
+  }
+
+  return results;
+}
+
 export function BulkImportModal({ isOpen, onClose, onImport, existingStudents }: BulkImportModalProps) {
   const [assignmentTitle, setAssignmentTitle] = useState('');
   const [rawText, setRawText] = useState('');
-  const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState('');
   const [parsedResults, setParsedResults] = useState<ParsedFeedback[] | null>(null);
 
-  const handleParse = async () => {
+  const handleParse = () => {
     setError('');
-    
+
     if (!assignmentTitle.trim()) {
       setError('Please provide an assignment title.');
       return;
     }
-    
+
     if (!rawText.trim()) {
-      setError('Please paste the feedback text to parse.');
+      setError('Please paste the feedback text.');
       return;
     }
 
-    setIsParsing(true);
-    setParsedResults(null);
+    const results = parseFeedbackText(rawText, existingStudents);
 
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        setError('AI parsing is currently unavailable. Please contact your administrator.');
-        return;
-      }
-      const ai = new GoogleGenAI({ apiKey });
-
-      // Create a simplified list of students for the AI to match against (name and ID)
-      const studentDirectory = existingStudents.map(s => ({ id: s.id, name: s.name }));
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `I have pasted some raw feedback text from an instructor. The format is roughly "[student name]: [feedback]", but it might be messy or have slight misspellings of names.
-        
-Please extract all the feedback into a structured list.
-Here is the list of students in the class with their IDs:
-${JSON.stringify(studentDirectory)}
-
-Try to match the extracted student name to the provided student directory. 
-If you find a good match, provide the "matchedId" and "matchedName". If not, just provide the raw extracted "studentNameOrId" and "feedback" and leave matchedId/Name empty.
-
-Raw Text:
-"""
-${rawText}
-"""
-`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                studentNameOrId: {
-                  type: Type.STRING,
-                  description: "The raw student name or identifier extracted from the text.",
-                },
-                feedback: {
-                  type: Type.STRING,
-                  description: "The feedback text for the student.",
-                },
-                matchedId: {
-                  type: Type.STRING,
-                  description: "The matched student ID from the class list, if found.",
-                },
-                matchedName: {
-                  type: Type.STRING,
-                  description: "The matched student name from the class list, if found.",
-                }
-              },
-              required: ["studentNameOrId", "feedback"]
-            }
-          }
-        }
-      });
-
-      const extractedData = JSON.parse(response.text.trim()) as ParsedFeedback[];
-      setParsedResults(extractedData);
-    } catch (err) {
-      console.error('Error parsing feedback:', err);
-      setError('Failed to parse feedback. Please try again or check your format.');
-    } finally {
-      setIsParsing(false);
+    if (results.length === 0) {
+      setError('No valid entries found. Use the format "StudentID: feedback" or "Full Name: feedback", one per line.');
+      return;
     }
+
+    setParsedResults(results);
   };
 
   const handleConfirmImport = () => {
@@ -137,9 +124,9 @@ ${rawText}
             <div className="flex justify-between items-center p-6 border-b border-white/10 bg-slate-900">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-cyan-500/20 text-cyan-400 rounded-lg border border-cyan-500/30">
-                  <Bot className="w-5 h-5" />
+                  <Upload className="w-5 h-5" />
                 </div>
-                <h2 className="text-xl font-semibold text-white">AI Bulk Import</h2>
+                <h2 className="text-xl font-semibold text-white">Bulk Import</h2>
               </div>
               <button 
                 onClick={onClose}
@@ -167,13 +154,17 @@ ${rawText}
 
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center justify-between">
-                      <span>Raw Feedback Text</span>
-                      <span className="text-xs text-slate-500 font-normal">Format: Name: Feedback</span>
+                      <span>Feedback Text</span>
+                      <span className="text-xs text-slate-500 font-normal">Format: StudentID or Name: Feedback</span>
                     </label>
                     <textarea
                       value={rawText}
                       onChange={(e) => setRawText(e.target.value)}
-                      placeholder="Angelique C. Quintana-Galindo: Great work on the hypothesis!&#10;Emery E. Burns: Needs more detail in the conclusion..."
+                      placeholder={`ACQ012612: Great work on the hypothesis!
+EEB042012: Needs more detail in the conclusion...
+
+Or use the student's full name:
+Angelique C. Quintana-Galindo: Great work!`}
                       className="w-full h-64 px-4 py-3 rounded-xl border border-white/10 bg-black/20 focus:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500 transition-all text-white placeholder:text-slate-500 resize-none font-mono text-sm leading-relaxed shadow-inner"
                     />
                   </div>
@@ -187,17 +178,10 @@ ${rawText}
 
                   <button
                     onClick={handleParse}
-                    disabled={isParsing || !rawText.trim() || !assignmentTitle.trim()}
+                    disabled={!rawText.trim() || !assignmentTitle.trim()}
                     className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none text-slate-900 font-semibold py-3 flex justify-center items-center gap-2 rounded-xl transition-all shadow-[0_0_15px_rgba(6,182,212,0.5)] hover:shadow-[0_0_25px_rgba(6,182,212,0.7)] active:scale-[0.98]"
                   >
-                    {isParsing ? (
-                      <React.Fragment>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Analyzing Feedback with AI...
-                      </React.Fragment>
-                    ) : (
-                      "Parse Feedback"
-                    )}
+                    Preview Import
                   </button>
                 </div>
               ) : (
@@ -205,7 +189,7 @@ ${rawText}
                   <div className="bg-cyan-500/10 border border-cyan-500/20 p-4 rounded-xl">
                     <h3 className="font-semibold text-cyan-400 mb-1">Review Parsed Feedback</h3>
                     <p className="text-cyan-200/80 text-sm">
-                      AI successfully extracted {parsedResults.length} feedback entries for "{assignmentTitle}". 
+                      Parsed {parsedResults.length} feedback entries for "{assignmentTitle}". 
                       Review the matches below before importing.
                     </p>
                   </div>
